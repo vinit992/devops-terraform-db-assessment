@@ -1,0 +1,34 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: hotel
+      POSTGRES_PASSWORD: local_only_password
+      POSTGRES_DB: hotels
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hotel -d hotels"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  restore_db:
+    image: postgres:16-alpine
+    profiles: ["restore"]
+    environment:
+      POSTGRES_USER: hotel
+      POSTGRES_PASSWORD: local_only_password
+      POSTGRES_DB: hotels_restore
+    volumes:
+      - restore_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hotel -d hotels_restore"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+volumes:
+  db_data:
+  restore_data:

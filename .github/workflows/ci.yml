@@ -1,0 +1,64 @@
+name: Terraform and PostgreSQL checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        env: [dev, prod]
+    defaults:
+      run:
+        working-directory: infra/envs/${{ matrix.env }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.10.5'
+      - name: Check formatting
+        run: terraform fmt -check -recursive ../../
+      - name: Init without remote backend
+        run: terraform init -backend=false -input=false
+      - name: Validate
+        run: terraform validate
+      - name: Plan (only when AWS credentials are configured)
+        if: ${{ vars.ENABLE_AWS_PLAN == 'true' }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: |
+          terraform plan -refresh=false -input=false -lock=false -out=tfplan
+          terraform show -no-color tfplan > plan.txt
+          cat plan.txt
+      - name: Upload plan text
+        if: ${{ vars.ENABLE_AWS_PLAN == 'true' && success() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-${{ matrix.env }}
+          path: infra/envs/${{ matrix.env }}/plan.txt
+          retention-days: 7
+  database:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start PostgreSQL and initialize schema/seed
+        run: docker compose up -d --wait db
+      - name: Check seeded data and query plan
+        run: |
+          docker compose exec -T db psql -U hotel -d hotels -v ON_ERROR_STOP=1 -c "SELECT COUNT(*) FROM hotel_bookings;"
+          docker compose exec -T db psql -U hotel -d hotels -v ON_ERROR_STOP=1 < db/query.sql
+      - name: Backup
+        run: ./scripts/backup.sh
+      - name: Restore into fresh database
+        run: ./scripts/restore.sh
+      - name: Verify
+        run: ./scripts/verify.sh
+      - name: Logs on failure
+        if: failure()
+        run: docker compose --profile restore logs

@@ -1,0 +1,12 @@
+aws_region             = "us-east-1"
+vpc_cidr               = "10.20.0.0/16"
+azs                    = ["us-east-1a", "us-east-1b"]
+ecs_cpu                = 512
+ecs_memory             = 1024
+ecs_desired_count      = 2
+db_instance_class      = "db.t3.medium"
+db_allocated_storage   = 100
+db_backup_retention    = 14
+db_deletion_protection = true
+db_multi_az            = true
+container_image        = "public.ecr.aws/nginx/nginx:stable"
